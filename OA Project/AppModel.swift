@@ -1,13 +1,6 @@
-//
-//  AppModel.swift
-//  OA Project
-//
-//  Created by Alessandro Magnani on 21/03/25.
-//
-
 import SwiftUI
+import RealityKit
 
-/// Maintains app-wide state
 @MainActor
 @Observable
 class AppModel {
@@ -18,4 +11,19 @@ class AppModel {
         case open
     }
     var immersiveSpaceState = ImmersiveSpaceState.closed
+    
+    // Proprietà per memorizzare il modello 3D corrente
+    var currentModel: ModelEntity? = nil
+    
+    // Metodo per gestire lo stato dello spazio immersivo
+    func toggleImmersiveSpace() {
+        switch immersiveSpaceState {
+        case .closed:
+            immersiveSpaceState = .inTransition
+        case .open:
+            immersiveSpaceState = .inTransition
+        case .inTransition:
+            break
+        }
+    }
 }
