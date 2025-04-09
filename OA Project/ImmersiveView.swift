@@ -167,6 +167,16 @@ struct ImmersiveView: View {
             let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
             let modelURL = documentsURL.appendingPathComponent("brain_model.usdz")
             
+            // Verifica dimensione del file
+            do {
+                let attributes = try fileManager.attributesOfItem(atPath: modelURL.path)
+                if let fileSize = attributes[.size] as? NSNumber {
+                    addDebug("Dimensione del file: \(fileSize.intValue) bytes")
+                }
+            } catch {
+                addDebug("Errore nel leggere gli attributi del file: \(error)")
+            }
+            
             addDebug("Verifica percorso del modello: \(modelURL.path)")
             addDebug("Il file esiste nei documenti: \(fileManager.fileExists(atPath: modelURL.path))")
             
@@ -201,69 +211,133 @@ struct ImmersiveView: View {
                 let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
                 let modelURL = documentsURL.appendingPathComponent("brain_model.usdz")
                 
+                // Verifica che il file sia leggibile
+                do {
+                    let data = try Data(contentsOf: modelURL)
+                    addDebug("Dimensione del file USDZ: \(data.count) bytes")
+                    if data.count < 1000 {
+                        addDebug("AVVISO: File potrebbe essere troppo piccolo per essere un modello valido")
+                    }
+                } catch {
+                    addDebug("Errore nel leggere i dati del file: \(error)")
+                }
+                
                 addDebug("Cerco il modello in: \(modelURL.path)")
                 
                 if fileManager.fileExists(atPath: modelURL.path) {
                     addDebug("File trovato nella cartella Documenti")
                     
-                    let brainModelEntity = try ModelEntity.load(contentsOf: modelURL)
-                    addDebug("Modello caricato in memoria")
+                    // Carica il modello come Entity (più generico)
+                    var brainEntity: Entity
                     
-                    // Verifica che il modello abbia una mesh
-                    if let modelComponent = brainModelEntity.components[ModelComponent.self] {
+                    do {
+                        addDebug("Tentativo di caricamento come Entity")
+                        brainEntity = try Entity.load(contentsOf: modelURL)
+                        addDebug("Entity caricata in memoria")
+                    } catch {
+                        addDebug("Errore nel caricamento come Entity: \(error)")
+                        
+                        // Crea un semplice cubo come fallback
+                        addDebug("Creazione di un modello di fallback")
+                        let mesh = MeshResource.generateBox(size: 0.2)
+                        let material = SimpleMaterial(color: .red, isMetallic: false)
+                        brainEntity = ModelEntity(mesh: mesh, materials: [material])
+                    }
+                    
+                    // Debug esteso sui componenti dell'entità
+                    addDebug("Verifica componenti principali:")
+                    if brainEntity.components[ModelComponent.self] != nil {
+                        addDebug("- Ha ModelComponent")
+                    } else {
+                        addDebug("- NON ha ModelComponent")
+                    }
+                    if brainEntity.components[CollisionComponent.self] != nil {
+                        addDebug("- Ha CollisionComponent")
+                    } else {
+                        addDebug("- NON ha CollisionComponent")
+                    }
+                    if brainEntity.components[InputTargetComponent.self] != nil {
+                        addDebug("- Ha InputTargetComponent")
+                    } else {
+                        addDebug("- NON ha InputTargetComponent")
+                    }
+                    if brainEntity.components[PointLightComponent.self] != nil {
+                        addDebug("- Ha PointLightComponent")
+                    } else {
+                        addDebug("- NON ha PointLightComponent")
+                    }
+                    
+                    // Verifica che il modello abbia una mesh tramite il componente ModelComponent
+                    if let modelComponent = brainEntity.components[ModelComponent.self] {
                         addDebug("Il modello ha una mesh valida")
                         
                         // Per debug aggiuntivo, verifichiamo i materiali
                         let materials = modelComponent.materials
                         if !materials.isEmpty {
                             addDebug("Il modello ha \(materials.count) materiali")
+                            // Esamina il primo materiale
+                            addDebug("Primo materiale tipo: \(type(of: materials[0]))")
                         } else {
                             addDebug("ATTENZIONE - Il modello non ha materiali")
+                            
+                            // Se non ci sono materiali, aggiungiamone uno di default
+                            if var modelComp = brainEntity.components[ModelComponent.self] as? ModelComponent {
+                                let simpleMaterial = SimpleMaterial(color: .white, isMetallic: false)
+                                modelComp.materials = [simpleMaterial]
+                                brainEntity.components[ModelComponent.self] = modelComp
+                                addDebug("Aggiunto materiale di default")
+                            }
                         }
                     } else {
                         addDebug("ATTENZIONE - Il modello non ha una mesh valida!")
+                        
+                        // Se l'entità non è un ModelEntity, crea uno di fallback
+                        if !(brainEntity is ModelEntity) {
+                            addDebug("L'entità caricata non è un ModelEntity, creazione fallback")
+                            let mesh = MeshResource.generateBox(size: 0.2)
+                            let material = SimpleMaterial(color: .red, isMetallic: false)
+                            let modelEntity = ModelEntity(mesh: mesh, materials: [material])
+                            
+                            // Trasferisci attributi dall'entità originale
+                            modelEntity.name = brainEntity.name
+                            modelEntity.transform = brainEntity.transform
+                            
+                            // Sostituisci con il modello di fallback
+                            brainEntity = modelEntity
+                            addDebug("Sostituito con ModelEntity di fallback")
+                        }
                     }
                     
                     // Configura il modello
-                    brainModelEntity.name = "BrainModel"
+                    brainEntity.name = "BrainModel"
                     
                     // Posiziona il modello di fronte all'utente
-                    brainModelEntity.position = SIMD3<Float>(0, 0, -0.7)
-                    addDebug("Modello posizionato a \(brainModelEntity.position)")
+                    brainEntity.position = SIMD3<Float>(0, 0, -0.7)
+                    addDebug("Modello posizionato a \(brainEntity.position)")
                     
                     // Scala il modello a una dimensione appropriata per la visualizzazione
-                    brainModelEntity.scale = SIMD3<Float>(0.05, 0.05, 0.05)
-                    addDebug("Modello scalato a \(brainModelEntity.scale)")
+                    brainEntity.scale = SIMD3<Float>(0.05, 0.05, 0.05)
+                    addDebug("Modello scalato a \(brainEntity.scale)")
                     
-                    // Aggiungi componente di collisione per interazione
-                    var collisionComponent = CollisionComponent(shapes: [.generateBox(size: [0.5, 0.5, 0.5])])
-                    collisionComponent.mode = .trigger
-                    brainModelEntity.components.set(collisionComponent)
-                    addDebug("Componente di collisione aggiunto")
-                    
-                    // Aggiungi comportamento di interazione
-                    brainModelEntity.components.set(InputTargetComponent())
-                    addDebug("Componente di input target aggiunto")
-                    
-                    // Verifica se il modello ha un materiale
-                    if let modelComponent = brainModelEntity.components[ModelComponent.self] {
-                        let materials = modelComponent.materials
-                        if !materials.isEmpty {
-                            addDebug("Il modello ha \(materials.count) materiali")
-                        } else {
-                            addDebug("ATTENZIONE - Il modello non ha materiali. Aggiungo un materiale standard")
-                            // Aggiungi un materiale di base se non ne ha
-                            var simpleMaterial = SimpleMaterial(color: .white, isMetallic: false)
-                            var updatedModelComponent = modelComponent
-                            updatedModelComponent.materials = [simpleMaterial]
-                            brainModelEntity.components[ModelComponent.self] = updatedModelComponent
-                        }
+                    // Se l'entità è un ModelEntity, aggiungi componenti di interazione
+                    if let modelEntity = brainEntity as? ModelEntity {
+                        // Aggiungi componente di collisione per interazione
+                        var collisionComponent = CollisionComponent(shapes: [.generateBox(size: [0.5, 0.5, 0.5])])
+                        collisionComponent.mode = .trigger
+                        modelEntity.components.set(collisionComponent)
+                        addDebug("Componente di collisione aggiunto")
+                        
+                        // Aggiungi comportamento di interazione
+                        modelEntity.components.set(InputTargetComponent())
+                        addDebug("Componente di input target aggiunto")
+                    } else {
+                        addDebug("NOTA: Non è stato possibile aggiungere componenti di collisione e interazione (l'entità non è un ModelEntity)")
                     }
                     
                     // Aggiungere il modello all'ancora
                     await MainActor.run {
                         if let container = anchorEntityContainer {
-                            container.anchorEntity.addChild(brainModelEntity)
+                            container.anchorEntity.addChild(brainEntity)
                             addDebug("Modello aggiunto all'anchor entity")
                             isModelLoaded = true
                         } else {
@@ -287,51 +361,115 @@ struct ImmersiveView: View {
                     addDebug("Tentativo di caricamento dal bundle...")
                     if let bundleURL = Bundle.main.url(forResource: "brain_model", withExtension: "usdz") {
                         addDebug("Trovato file nel bundle: \(bundleURL.path)")
-                        let brainModel = try ModelEntity.load(contentsOf: bundleURL)
-                        brainModel.name = "BrainModel"  // Aggiungi nome per targeting
-                        brainModel.position = SIMD3<Float>(0, 0, -0.7)
-                        brainModel.scale = SIMD3<Float>(0.05, 0.05, 0.05)
                         
-                        // Verifica la mesh e i materiali
-                        if let modelComponent = brainModel.components[ModelComponent.self] {
+                        // Carica il modello come Entity (più generico)
+                        var brainEntity: Entity
+                        
+                        do {
+                            addDebug("Tentativo di caricamento dal bundle come Entity")
+                            brainEntity = try Entity.load(contentsOf: bundleURL)
+                            addDebug("Entity dal bundle caricata in memoria")
+                        } catch {
+                            addDebug("Errore nel caricamento come Entity dal bundle: \(error)")
+                            
+                            // Crea un semplice cubo come fallback
+                            addDebug("Creazione di un modello di fallback")
+                            let mesh = MeshResource.generateBox(size: 0.2)
+                            let material = SimpleMaterial(color: .red, isMetallic: false)
+                            brainEntity = ModelEntity(mesh: mesh, materials: [material])
+                        }
+                        
+                        // Debug esteso sui componenti dell'entità
+                        addDebug("Verifica componenti principali dell'entità dal bundle:")
+                        if brainEntity.components[ModelComponent.self] != nil {
+                            addDebug("- Ha ModelComponent")
+                        } else {
+                            addDebug("- NON ha ModelComponent")
+                        }
+                        if brainEntity.components[CollisionComponent.self] != nil {
+                            addDebug("- Ha CollisionComponent")
+                        } else {
+                            addDebug("- NON ha CollisionComponent")
+                        }
+                        if brainEntity.components[InputTargetComponent.self] != nil {
+                            addDebug("- Ha InputTargetComponent")
+                        } else {
+                            addDebug("- NON ha InputTargetComponent")
+                        }
+                        if brainEntity.components[PointLightComponent.self] != nil {
+                            addDebug("- Ha PointLightComponent")
+                        } else {
+                            addDebug("- NON ha PointLightComponent")
+                        }
+                        
+                        // Verifica che il modello abbia una mesh
+                        if let modelComponent = brainEntity.components[ModelComponent.self] {
                             addDebug("Il modello dal bundle ha una mesh valida")
                             
                             // Verifica materiali
                             let materials = modelComponent.materials
                             if !materials.isEmpty {
                                 addDebug("Il modello dal bundle ha \(materials.count) materiali")
+                                // Esamina il primo materiale
+                                addDebug("Primo materiale tipo: \(type(of: materials[0]))")
                             } else {
                                 addDebug("ATTENZIONE - Il modello dal bundle non ha materiali")
+                                
+                                // Se non ci sono materiali, aggiungiamone uno di default
+                                if var modelComp = brainEntity.components[ModelComponent.self] as? ModelComponent {
+                                    let simpleMaterial = SimpleMaterial(color: .white, isMetallic: false)
+                                    modelComp.materials = [simpleMaterial]
+                                    brainEntity.components[ModelComponent.self] = modelComp
+                                    addDebug("Aggiunto materiale di default al modello dal bundle")
+                                }
+                            }
+                        } else {
+                            addDebug("ATTENZIONE - Il modello dal bundle non ha una mesh valida!")
+                            
+                            // Se l'entità non è un ModelEntity, crea uno di fallback
+                            if !(brainEntity is ModelEntity) {
+                                addDebug("L'entità dal bundle non è un ModelEntity, creazione fallback")
+                                let mesh = MeshResource.generateBox(size: 0.2)
+                                let material = SimpleMaterial(color: .red, isMetallic: false)
+                                let modelEntity = ModelEntity(mesh: mesh, materials: [material])
+                                
+                                // Trasferisci attributi dall'entità originale
+                                modelEntity.name = brainEntity.name
+                                modelEntity.transform = brainEntity.transform
+                                
+                                // Sostituisci con il modello di fallback
+                                brainEntity = modelEntity
+                                addDebug("Sostituito con ModelEntity di fallback per il modello dal bundle")
                             }
                         }
                         
-                        if let modelComponent = brainModel.components[ModelComponent.self] {
-                            let modelMaterials = modelComponent.materials
-                            if !modelMaterials.isEmpty {
-                                addDebug("Il modello dal bundle ha \(modelMaterials.count) materiali")
-                            } else {
-                                addDebug("ATTENZIONE - Il modello dal bundle non ha materiali. Aggiungo un materiale standard")
-                                var simpleMaterial = SimpleMaterial(color: .white, isMetallic: false)
-                                var updatedModelComponent = modelComponent
-                                updatedModelComponent.materials = [simpleMaterial]
-                                brainModel.components[ModelComponent.self] = updatedModelComponent
-                            }
-                        }
+                        // Configura il modello
+                        brainEntity.name = "BrainModel"
+                        brainEntity.position = SIMD3<Float>(0, 0, -0.7)
+                        brainEntity.scale = SIMD3<Float>(0.05, 0.05, 0.05)
                         
-                        // Aggiungi componenti di interazione
-                        var collisionComponent = CollisionComponent(shapes: [.generateBox(size: [0.5, 0.5, 0.5])])
-                        collisionComponent.mode = .trigger
-                        brainModel.components.set(collisionComponent)
-                        brainModel.components.set(InputTargetComponent())
+                        // Se l'entità è un ModelEntity, aggiungi componenti di interazione
+                        if let modelEntity = brainEntity as? ModelEntity {
+                            // Aggiungi componente di collisione per interazione
+                            var collisionComponent = CollisionComponent(shapes: [.generateBox(size: [0.5, 0.5, 0.5])])
+                            collisionComponent.mode = .trigger
+                            modelEntity.components.set(collisionComponent)
+                            
+                            // Aggiungi comportamento di interazione
+                            modelEntity.components.set(InputTargetComponent())
+                            addDebug("Componenti di collisione e input target aggiunti al modello dal bundle")
+                        } else {
+                            addDebug("NOTA: Non è stato possibile aggiungere componenti di collisione e interazione al modello dal bundle (l'entità non è un ModelEntity)")
+                        }
                         
                         // Aggiungere il modello all'ancora
                         await MainActor.run {
                             if let container = anchorEntityContainer {
-                                container.anchorEntity.addChild(brainModel)
-                                addDebug("Modello aggiunto all'anchor entity")
+                                container.anchorEntity.addChild(brainEntity)
+                                addDebug("Modello dal bundle aggiunto all'anchor entity")
                                 isModelLoaded = true
                             } else {
-                                addDebug("ERRORE - Ancora non disponibile per aggiungere il modello")
+                                addDebug("ERRORE - Ancora non disponibile per aggiungere il modello dal bundle")
                                 modelLoadingError = "Ancora non disponibile"
                             }
                         }
@@ -339,16 +477,63 @@ struct ImmersiveView: View {
                         addDebug("Modello del cervello caricato dal bundle")
                     } else {
                         addDebug("ERRORE - Impossibile trovare brain_model.usdz nel bundle")
+                        
+                        // Crea un modello di fallback (cubo rosso)
+                        addDebug("Creazione di un modello di fallback come ultimo tentativo")
+                        let mesh = MeshResource.generateBox(size: 0.2)
+                        let material = SimpleMaterial(color: .red, isMetallic: false)
+                        let fallbackModel = ModelEntity(mesh: mesh, materials: [material])
+                        
+                        fallbackModel.name = "FallbackModel"
+                        fallbackModel.position = SIMD3<Float>(0, 0, -0.7)
+                        
+                        // Aggiungi componente di collisione per interazione
+                        var collisionComponent = CollisionComponent(shapes: [.generateBox(size: [0.2, 0.2, 0.2])])
+                        collisionComponent.mode = .trigger
+                        fallbackModel.components.set(collisionComponent)
+                        fallbackModel.components.set(InputTargetComponent())
+                        
                         await MainActor.run {
-                            modelLoadingError = "Modello non trovato nel bundle"
+                            if let container = anchorEntityContainer {
+                                container.anchorEntity.addChild(fallbackModel)
+                                addDebug("Modello di fallback aggiunto all'anchor entity")
+                                isModelLoaded = true
+                                modelLoadingError = "Utilizzato modello di fallback (cubo rosso)"
+                            } else {
+                                addDebug("ERRORE - Ancora non disponibile per aggiungere il modello di fallback")
+                                modelLoadingError = "Ancora non disponibile, fallback fallito"
+                            }
                         }
                     }
                 }
             } catch {
                 addDebug("ERRORE - Caricamento del modello fallito: \(error.localizedDescription)")
                 addDebug("ERRORE dettagliato: \(error)")
+                
+                // Crea un modello di fallback (cubo rosso) in caso di errore
+                addDebug("Tentativo di creazione modello di fallback dopo errore")
+                let mesh = MeshResource.generateBox(size: 0.2)
+                let material = SimpleMaterial(color: .red, isMetallic: false)
+                let fallbackModel = ModelEntity(mesh: mesh, materials: [material])
+                
+                fallbackModel.name = "ErrorFallbackModel"
+                fallbackModel.position = SIMD3<Float>(0, 0, -0.7)
+                
+                // Aggiungi componente di collisione per interazione
+                var collisionComponent = CollisionComponent(shapes: [.generateBox(size: [0.2, 0.2, 0.2])])
+                collisionComponent.mode = .trigger
+                fallbackModel.components.set(collisionComponent)
+                fallbackModel.components.set(InputTargetComponent())
+                
                 await MainActor.run {
-                    modelLoadingError = error.localizedDescription
+                    if let container = anchorEntityContainer {
+                        container.anchorEntity.addChild(fallbackModel)
+                        addDebug("Modello di fallback dopo errore aggiunto all'anchor entity")
+                        isModelLoaded = true
+                        modelLoadingError = "Errore: \(error.localizedDescription)\nUtilizzato fallback"
+                    } else {
+                        modelLoadingError = error.localizedDescription
+                    }
                 }
             }
         }
