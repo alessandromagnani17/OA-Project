@@ -1,7 +1,8 @@
 import SwiftUI
 import RealityKit
 import UniformTypeIdentifiers
-import QuickLook // Aggiungi questa importazione
+import QuickLook
+import SceneKit
 
 struct ContentView: View {
     @Environment(AppModel.self) private var appModel
@@ -12,18 +13,19 @@ struct ContentView: View {
     @State private var errorMessage = ""
     @State private var isQuickLookPresented = false
     @State private var quickLookURL: URL? = nil
+    @State private var selectedModelURL: URL? = nil
     
     var body: some View {
         ZStack {
             VStack {
-                Text("USDZ Viewer")
+                Text("Visualizzatore 3D")
                     .font(.largeTitle)
                     .padding()
                 
                 Button(action: {
                     showImporter = true
                 }) {
-                    Label("Importa Modello USDZ", systemImage: "doc.badge.plus")
+                    Label("Importa Modello 3D", systemImage: "doc.badge.plus")
                         .font(.headline)
                 }
                 .buttonStyle(.borderedProminent)
@@ -34,11 +36,32 @@ struct ContentView: View {
                         .padding()
                 }
                 
+                // Mostra il modello se è stato caricato
+                if let modelURL = selectedModelURL {
+                    ModelContentView(modelURL: modelURL)
+                        .frame(height: 800)
+                        .padding()
+                }
+                
                 if appModel.immersiveSpaceState == .closed {
                     Button(action: {
+                        // Prima di aprire lo spazio immersivo, carica il modello corrente
+                        if let modelURL = selectedModelURL {
+                            loadModelForImmersiveSpace(from: modelURL)
+                        }
                         appModel.toggleImmersiveSpace()
                     }) {
                         Label("Spazio Immersivo", systemImage: "cube")
+                            .font(.headline)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding()
+                    .disabled(selectedModelURL == nil)
+                } else {
+                    Button(action: {
+                        appModel.toggleImmersiveSpace()
+                    }) {
+                        Label("Chiudi Spazio Immersivo", systemImage: "xmark.circle")
                             .font(.headline)
                     }
                     .buttonStyle(.borderedProminent)
@@ -48,7 +71,7 @@ struct ContentView: View {
         }
         .fileImporter(
             isPresented: $showImporter,
-            allowedContentTypes: [UTType.usdz],
+            allowedContentTypes: [UTType.usdz, .sceneKitScene],
             allowsMultipleSelection: false
         ) { result in
             switch result {
@@ -70,7 +93,6 @@ struct ContentView: View {
         } message: {
             Text(errorMessage)
         }
-        .quickLookPreview($quickLookURL, in: [quickLookURL].compactMap { $0 })
     }
     
     private func loadModel(from url: URL) {
@@ -99,62 +121,199 @@ struct ContentView: View {
                 
                 print("File copiato con successo in: \(destinationURL)")
                 
-                // Set the QuickLook URL and present it
+                // Aggiorna l'URL del modello selezionato
                 await MainActor.run {
-                    self.quickLookURL = destinationURL
-                    self.isQuickLookPresented = true
+                    self.selectedModelURL = destinationURL
                     self.loadingMessage = ""
                 }
             } catch {
                 print("Errore: \(error)")
+                await MainActor.run {
+                    self.errorMessage = "Errore durante il caricamento: \(error.localizedDescription)"
+                    self.showErrorAlert = true
+                    self.loadingMessage = ""
+                }
             }
+        }
+    }
+    
+    // Metodo per caricare il modello per lo spazio immersivo
+    private func loadModelForImmersiveSpace(from url: URL) {
+        let fileExtension = url.pathExtension.lowercased()
+        
+        if fileExtension == "scn" {
+            Task {
+                do {
+                    // Carichiamo la scena SCN
+                    let scnScene = try SCNScene(url: url, options: nil)
+                    
+                    // Creiamo un ModelEntity base
+                    let rootModelEntity = ModelEntity()
+                    
+                    // Processiamo i nodi principali e otteniamo il bounding box
+                    var minX: Float = .infinity
+                    var minY: Float = .infinity
+                    var minZ: Float = .infinity
+                    var maxX: Float = -.infinity
+                    var maxY: Float = -.infinity
+                    var maxZ: Float = -.infinity
+                    
+                    processSceneNodes(scnScene.rootNode, parentEntity: rootModelEntity, minX: &minX, minY: &minY, minZ: &minZ, maxX: &maxX, maxY: &maxY, maxZ: &maxZ)
+                    
+                    // Calcola le dimensioni e il centro del modello
+                    let center = SIMD3<Float>((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2)
+                    let size = SIMD3<Float>(maxX - minX, maxY - minY, maxZ - minZ)
+                    let maxDimension = max(max(size.x, size.y), size.z)
+                    
+                    // Scala il modello per visualizzarlo correttamente
+                    let scale: Float = 0.5 / maxDimension  // Scala per adattare il modello a 0.5 metri
+                    rootModelEntity.scale = SIMD3<Float>(repeating: scale)
+                    
+                    await MainActor.run {
+                        // Aggiorniamo il modello nell'AppModel
+                        appModel.currentModel = rootModelEntity
+                        appModel.modelScale = scale
+                        appModel.modelCenter = center
+                    }
+                } catch {
+                    print("Errore nella conversione SCN per lo spazio immersivo: \(error)")
+                    errorMessage = "Errore nella conversione del modello: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
+            }
+        } else if fileExtension == "usdz" {
+            Task {
+                do {
+                    let modelEntity = try await ModelEntity(contentsOf: url)
+                    
+                    // Calcola le dimensioni del modello
+                    if let modelComponent = modelEntity.components[ModelComponent.self] {
+                        let bounds = modelComponent.mesh.bounds
+                        let maxDimension = max(max(bounds.extents.x, bounds.extents.y), bounds.extents.z)
+                        let scale: Float = 0.5 / maxDimension  // Scala per adattare il modello a 0.5 metri
+                        modelEntity.scale = SIMD3<Float>(repeating: scale)
+                    }
+                    
+                    await MainActor.run {
+                        appModel.currentModel = modelEntity
+                    }
+                } catch {
+                    print("Errore nel caricamento USDZ per lo spazio immersivo: \(error)")
+                    errorMessage = "Errore nel caricamento del modello: \(error.localizedDescription)"
+                    showErrorAlert = true
+                }
+            }
+        }
+    }
+    
+    // Metodo per processare i nodi della scena e calcolare il bounding box
+    private func processSceneNodes(_ node: SCNNode, parentEntity: Entity, minX: inout Float, minY: inout Float, minZ: inout Float, maxX: inout Float, maxY: inout Float, maxZ: inout Float) {
+        // Applichiamo la trasformazione globale
+        let position = node.worldPosition
+        let positionFloat = SIMD3<Float>(Float(position.x), Float(position.y), Float(position.z))
+        
+        // Aggiorniamo il bounding box
+        minX = min(minX, positionFloat.x)
+        minY = min(minY, positionFloat.y)
+        minZ = min(minZ, positionFloat.z)
+        maxX = max(maxX, positionFloat.x)
+        maxY = max(maxY, positionFloat.y)
+        maxZ = max(maxZ, positionFloat.z)
+        
+        // Per ogni nodo con geometria, creiamo un ModelEntity con un materiale traslucido
+        if let geometry = node.geometry {
+            // Creiamo un ModelEntity basato sul tipo di geometria
+            var modelEntity: ModelEntity
+            
+            if let box = geometry as? SCNBox {
+                let boxDimensions = SIMD3<Float>(Float(box.width), Float(box.height), Float(box.length))
+                let boxMesh = MeshResource.generateBox(size: boxDimensions)
+                let material = SimpleMaterial(color: .cyan, roughness: 0.2, isMetallic: false)
+                modelEntity = ModelEntity(mesh: boxMesh, materials: [material])
+            } else if let sphere = geometry as? SCNSphere {
+                let sphereMesh = MeshResource.generateSphere(radius: Float(sphere.radius))
+                let material = SimpleMaterial(color: .cyan, roughness: 0.2, isMetallic: false)
+                modelEntity = ModelEntity(mesh: sphereMesh, materials: [material])
+            } else {
+                // Per altre geometrie, usiamo un box come segnaposto
+                // Approssimiamo la dimensione del box usando il bounding box del nodo
+                let boundingBox = node.boundingBox
+                let minBound = boundingBox.min
+                let maxBound = boundingBox.max
+                let size = SIMD3<Float>(
+                    Float(maxBound.x - minBound.x),
+                    Float(maxBound.y - minBound.y),
+                    Float(maxBound.z - minBound.z)
+                )
+                // Correggi l'errore length() calcolando la lunghezza manualmente
+                let length = sqrt(size.x * size.x + size.y * size.y + size.z * size.z)
+                let boxMesh = MeshResource.generateBox(size: length > 0 ? size : [0.1, 0.1, 0.1])
+                
+                // Materiale olografico
+                var material = SimpleMaterial()
+                material.color = .init(tint: .cyan.withAlphaComponent(0.7))
+                material.roughness = 0.2
+                material.metallic = 0.8
+                modelEntity = ModelEntity(mesh: boxMesh, materials: [material])
+            }
+            
+            // Applichiamo la trasformazione
+            modelEntity.position = positionFloat
+            
+            // Applichiamo la rotazione
+            let rotation = node.worldOrientation
+            modelEntity.orientation = simd_quatf(
+                real: Float(rotation.w),
+                imag: SIMD3<Float>(Float(rotation.x), Float(rotation.y), Float(rotation.z))
+            )
+            
+            // Applichiamo la scala
+            // Estrai la scala dalla matrice di trasformazione mondiale
+            let worldTransform = node.worldTransform
+            let scaleX = Float(sqrt(worldTransform.m11 * worldTransform.m11 + worldTransform.m12 * worldTransform.m12 + worldTransform.m13 * worldTransform.m13))
+            let scaleY = Float(sqrt(worldTransform.m21 * worldTransform.m21 + worldTransform.m22 * worldTransform.m22 + worldTransform.m23 * worldTransform.m23))
+            let scaleZ = Float(sqrt(worldTransform.m31 * worldTransform.m31 + worldTransform.m32 * worldTransform.m32 + worldTransform.m33 * worldTransform.m33))
+            let scale = SIMD3<Float>(scaleX, scaleY, scaleZ)
+            modelEntity.scale = scale
+            
+            // Aggiungiamo il modello al parent
+            parentEntity.addChild(modelEntity)
+        }
+        
+        // Processiamo i figli ricorsivamente
+        for childNode in node.childNodes {
+            processSceneNodes(childNode, parentEntity: parentEntity, minX: &minX, minY: &minY, minZ: &minZ, maxX: &maxX, maxY: &maxY, maxZ: &maxZ)
         }
     }
 }
 
-struct ModelViewer: View {
-    var modelEntity: ModelEntity
-    var appModel: AppModel
-    @State private var url: URL?
+// Vista che gestisce sia file SCN che USDZ
+struct ModelContentView: View {
+    let modelURL: URL
     
     var body: some View {
-        ZStack {
-            if let url = url {
-                // Vista 3D diretta dal file USDZ
-                Model3D(url: url)
-                    .padding()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ProgressView("Caricamento modello...")
-            }
-            
-            VStack {
-                Spacer()
-                HStack {
-                    Button("Chiudi") {
-                        NotificationCenter.default.post(name: Notification.Name.closeModelViewer, object: nil)
+        if modelURL.pathExtension.lowercased() == "scn" {
+            // Usa SceneView per file SCN
+            SceneView(
+                scene: {
+                    do {
+                        let scene = try SCNScene(url: modelURL, options: nil)
+                        return scene
+                    } catch {
+                        print("Errore nel caricamento della scena SCN: \(error)")
+                        return SCNScene()
                     }
-                    .buttonStyle(.borderedProminent)
-                    .padding()
-                }
-            }
-        }
-        .onAppear {
-            // Recupera l'URL del file USDZ dalla directory dei documenti
-            if let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-                do {
-                    let files = try FileManager.default.contentsOfDirectory(at: documentsDirectory, includingPropertiesForKeys: nil)
-                    let usdzFiles = files.filter { $0.pathExtension.lowercased() == "usdz" }
-                    if let firstUsdzFile = usdzFiles.first {
-                        self.url = firstUsdzFile
-                        print("URL per la visualizzazione diretta: \(firstUsdzFile)")
-                    } else {
-                        print("Nessun file USDZ trovato nella directory documenti")
-                    }
-                } catch {
-                    print("Errore nel leggere la directory: \(error)")
-                }
-            }
+                }(),
+                options: [.allowsCameraControl, .autoenablesDefaultLighting]
+            )
+        } else {
+            // Usa Model3D per file USDZ
+            Model3D(url: modelURL)
         }
     }
+}
+
+// Estensione per UTType per supportare i file .scn
+extension UTType {
+    static let sceneKitScene = UTType(filenameExtension: "scn")!
 }
