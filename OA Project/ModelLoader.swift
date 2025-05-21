@@ -74,15 +74,22 @@ class ModelLoader {
                 
                 // Calcola le dimensioni del modello
                 var center = SIMD3<Float>.zero
-                var scale: Float = 1.0
 
-                // Aggiungiamo await all'accesso ai componenti
                 if let modelComponent = await modelEntity.components[ModelComponent.self] {
                     let bounds = await modelComponent.mesh.bounds
                     let maxDimension = max(max(bounds.extents.x, bounds.extents.y), bounds.extents.z)
-                    scale = 0.5 / maxDimension  // Scala per adattare il modello a 0.5 metri
-                    modelEntity.scale = SIMD3<Float>(repeating: scale)
+                    
+                    // Calcola la scala e utilizzala direttamente
+                    let localScale = 0.5 / maxDimension
+                    
+                    await MainActor.run {
+                        modelEntity.scale = SIMD3<Float>(repeating: localScale)
+                    }
+                    
                     center = bounds.center
+                    
+                    // Se serve restituire la scala come parte del valore di ritorno, assegnala qui
+                    return (modelEntity, center)
                 }
                 
                 return (modelEntity, center)
