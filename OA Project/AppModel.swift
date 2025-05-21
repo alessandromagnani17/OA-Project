@@ -4,31 +4,30 @@ import RealityKit
 @MainActor
 @Observable
 class AppModel {
+    // ID dello spazio immersivo
     let immersiveSpaceID = "ImmersiveSpace"
+    
+    // Enum per lo stato dello spazio immersivo
     enum ImmersiveSpaceState {
         case closed
         case inTransition
         case open
     }
+    
+    // Stato corrente dello spazio immersivo
     var immersiveSpaceState = ImmersiveSpaceState.closed
     
     // Proprietà per memorizzare il modello 3D corrente
     var currentModel: ModelEntity? = nil
     
-    // Proprietà aggiuntive per il modello 3D
+    // Proprietà per scala e posizionamento del modello
     var modelScale: Float = 1.0
     var modelCenter: SIMD3<Float> = .zero
-    var holographicMode: Bool = true // Abilita il rendering olografico
     
-    // Metodo per gestire lo stato dello spazio immersivo
+    // Metodo semplificato per gestire lo stato dello spazio immersivo
     func toggleImmersiveSpace() {
-        switch immersiveSpaceState {
-        case .closed:
+        if immersiveSpaceState != .inTransition {
             immersiveSpaceState = .inTransition
-        case .open:
-            immersiveSpaceState = .inTransition
-        case .inTransition:
-            break
         }
     }
 }
