@@ -6,6 +6,9 @@ import SceneKit
 
 struct ContentView: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(\.openImmersiveSpace) private var openImmersiveSpace
+    @Environment(\.dismissImmersiveSpace) private var dismissImmersiveSpace
+    
     @State private var showImporter = false
     @State private var loadingMessage = ""
     @State private var showErrorAlert = false
@@ -17,14 +20,14 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             VStack {
-                Text("Visualizzatore 3D")
+                Text("3D Viewer")
                     .font(.largeTitle)
                     .padding()
                 
                 Button(action: {
                     showImporter = true
                 }) {
-                    Label("Importa Modello 3D", systemImage: "doc.badge.plus")
+                    Label("Import 3D Model", systemImage: "doc.badge.plus")
                         .font(.headline)
                 }
                 .buttonStyle(.borderedProminent)
@@ -40,7 +43,16 @@ struct ContentView: View {
                     SceneView(
                         scene: {
                             do {
-                                return try SCNScene(url: modelURL, options: nil)
+                                let scene = try SCNScene(url: modelURL, options: nil)
+                                // Ruota la scena di 90 gradi sull'asse X per allinearla al piano verticale
+                                scene.rootNode.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
+                                
+                                // Posiziona la scena al centro della vista
+                                let boundingBox = scene.rootNode.boundingBox
+                                let centerY = (boundingBox.max.y + boundingBox.min.y) / 2
+                                scene.rootNode.position = SCNVector3(0, -centerY, 0)
+                                
+                                return scene
                             } catch {
                                 print("Errore nel caricamento della scena SCN: \(error)")
                                 return SCNScene()
@@ -57,10 +69,24 @@ struct ContentView: View {
                         // Prima di aprire lo spazio immersivo, carica il modello corrente
                         if let modelURL = selectedModelURL {
                             loadModelForImmersiveSpace(from: modelURL)
+                            
+                            // Ora apriamo lo spazio immersivo
+                            Task {
+                                let result = await openImmersiveSpace(id: appModel.immersiveSpaceID)
+                                if result == .opened {
+                                    await MainActor.run {
+                                        appModel.immersiveSpaceState = .open
+                                    }
+                                    print("Spazio immersivo aperto con successo")
+                                } else {
+                                    print("Errore nell'apertura dello spazio immersivo: \(result)")
+                                    errorMessage = "Impossibile aprire lo spazio immersivo"
+                                    showErrorAlert = true
+                                }
+                            }
                         }
-                        appModel.toggleImmersiveSpace()
                     }) {
-                        Label("Spazio Immersivo", systemImage: "cube")
+                        Label("Immersive Space", systemImage: "cube")
                             .font(.headline)
                     }
                     .buttonStyle(.borderedProminent)
@@ -68,9 +94,16 @@ struct ContentView: View {
                     .disabled(selectedModelURL == nil)
                 } else {
                     Button(action: {
-                        appModel.toggleImmersiveSpace()
+                        // Chiudiamo lo spazio immersivo
+                        Task {
+                            await dismissImmersiveSpace()
+                            await MainActor.run {
+                                appModel.immersiveSpaceState = .closed
+                            }
+                            print("Spazio immersivo chiuso con successo")
+                        }
                     }) {
-                        Label("Chiudi Spazio Immersivo", systemImage: "xmark.circle")
+                        Label("Close Immersive Space", systemImage: "xmark.circle")
                             .font(.headline)
                     }
                     .buttonStyle(.borderedProminent)
@@ -86,16 +119,16 @@ struct ContentView: View {
             switch result {
             case .success(let urls):
                 if let selectedURL = urls.first {
-                    loadingMessage = "Caricamento del modello..."
+                    loadingMessage = "Loading model..."
                     loadModel(from: selectedURL)
                 }
             case .failure(let error):
-                errorMessage = "Errore durante l'importazione: \(error.localizedDescription)"
+                errorMessage = "Import error: \(error.localizedDescription)"
                 showErrorAlert = true
                 print(errorMessage)
             }
         }
-        .alert("Errore", isPresented: $showErrorAlert) {
+        .alert("Error", isPresented: $showErrorAlert) {
             Button("OK") {
                 showErrorAlert = false
             }
@@ -186,6 +219,15 @@ struct ContentView: View {
                     let scale: Float = 0.5 / maxDimension  // Scala per adattare il modello a 0.5 metri
                     rootModelEntity.scale = SIMD3<Float>(repeating: scale)
                     
+                    // Ruota il modello di 90 gradi sull'asse X per allinearlo correttamente
+                    let rotation = simd_quatf(angle: Float.pi / 2, axis: [1, 0, 0])
+                    rootModelEntity.orientation = rotation
+                    
+                    // Spostiamo il modello verso l'alto per centrarlo
+                    // Poiché abbiamo ruotato di 90 gradi sull'asse X, dobbiamo spostare sulla Z
+                    // per compensare la posizione verticale
+                    rootModelEntity.position = [0, 1.0, 0]
+                    
                     await MainActor.run {
                         // Aggiorniamo il modello nell'AppModel
                         appModel.currentModel = rootModelEntity
@@ -210,6 +252,13 @@ struct ContentView: View {
                         let scale: Float = 0.5 / maxDimension  // Scala per adattare il modello a 0.5 metri
                         modelEntity.scale = SIMD3<Float>(repeating: scale)
                     }
+                    
+                    // Ruota il modello di 90 gradi sull'asse X per allinearlo correttamente
+                    let rotation = simd_quatf(angle: Float.pi / 2, axis: [1, 0, 0])
+                    modelEntity.orientation = rotation
+                    
+                    // Spostiamo il modello verso l'alto per centrarlo
+                    modelEntity.position = [0, 1.0, 0]
                     
                     await MainActor.run {
                         appModel.currentModel = modelEntity
