@@ -32,7 +32,7 @@ struct ImmersiveView: View {
                 content.add(anchorEntity)
                 print("Modello aggiunto alla vista immersiva")
                 
-                // Aggiungi illuminazione alla scena per migliorare la visualizzazione
+                // Aggiungi illuminazione alla scena
                 addLighting(to: content)
             } else {
                 print("Nessun modello disponibile per la vista immersiva")
@@ -41,7 +41,12 @@ struct ImmersiveView: View {
         .gesture(
             DragGesture()
                 .onChanged { value in
-                    rotateModel(by: value.translation)
+                    let rotationAmount = Float(value.translation.width - dragAmount.width) / 200.0
+                    if let model = appModel.currentModel {
+                        let rotationY = simd_quatf(angle: rotationAmount, axis: [0, 1, 0])
+                        model.transform.rotation = model.transform.rotation * rotationY
+                        dragAmount = value.translation
+                    }
                 }
                 .onEnded { _ in
                     dragAmount = .zero
@@ -49,18 +54,26 @@ struct ImmersiveView: View {
         )
     }
     
-    // Funzione per ruotare il modello
-    private func rotateModel(by translation: CGSize) {
-        let rotationAmount = Float(translation.width - dragAmount.width) / 200.0
-        guard let model = appModel.currentModel else { return }
+    // Applica un materiale olografico traslucido a tutte le entità dell'albero
+    private func applyHolographicMaterial(to entity: Entity) {
+        if let modelEntity = entity as? ModelEntity {
+            // Crea un materiale olografico con effetto traslucido
+            var holographicMaterial = SimpleMaterial()
+            holographicMaterial.color = .init(tint: UIColor.cyan.withAlphaComponent(0.7))
+            holographicMaterial.roughness = 0.2
+            holographicMaterial.metallic = 0.8
+            
+            // Applica il materiale
+            modelEntity.model?.materials = [holographicMaterial]
+        }
         
-        let rotationY = simd_quatf(angle: rotationAmount, axis: [0, 1, 0])
-        model.transform.rotation = model.transform.rotation * rotationY
-        
-        dragAmount = translation
+        // Applica ricorsivamente a tutti i figli
+        for child in entity.children {
+            applyHolographicMaterial(to: child)
+        }
     }
     
-    // Funzione per aggiungere illuminazione
+    // Aggiunge illuminazione a una scena RealityKit
     private func addLighting(to content: RealityViewContent) {
         // Luce principale bianca dall'alto
         let mainLight = Entity()
@@ -92,28 +105,4 @@ struct ImmersiveView: View {
         fillLight.position = [-1, 1, 0]
         content.add(fillLight)
     }
-    
-    // Funzione per applicare materiale olografico a tutte le entità
-    private func applyHolographicMaterial(to entity: Entity) {
-        if let modelEntity = entity as? ModelEntity {
-            // Crea un materiale olografico con effetto traslucido
-            var holographicMaterial = SimpleMaterial()
-            holographicMaterial.color = .init(tint: UIColor.cyan.withAlphaComponent(0.7))
-            holographicMaterial.roughness = 0.2
-            holographicMaterial.metallic = 0.8
-            
-            // Applica il materiale
-            modelEntity.model?.materials = [holographicMaterial]
-        }
-        
-        // Applica ricorsivamente a tutti i figli
-        for child in entity.children {
-            applyHolographicMaterial(to: child)
-        }
-    }
-}
-
-// Estensione per le notifiche
-extension Notification.Name {
-    static let closeModelViewer = Notification.Name("CloseModelViewer")
 }
