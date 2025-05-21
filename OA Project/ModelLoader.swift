@@ -77,7 +77,7 @@ class ModelLoader {
                 var scale: Float = 1.0
                 
                 if let modelComponent = modelEntity.components[ModelComponent.self] {
-                    let bounds = modelComponent.mesh.bounds
+                    let bounds = await modelComponent.mesh.bounds
                     let maxDimension = max(max(bounds.extents.x, bounds.extents.y), bounds.extents.z)
                     scale = 0.5 / maxDimension  // Scala per adattare il modello a 0.5 metri
                     modelEntity.scale = SIMD3<Float>(repeating: scale)
