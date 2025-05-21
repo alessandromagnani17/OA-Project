@@ -16,15 +16,15 @@ class ModelLoader {
         var errorDescription: String? {
             switch self {
             case .fileAccessDenied:
-                return "Accesso al file negato"
+                return "File access denied"
             case .fileImportFailed(let error):
-                return "Importazione fallita: \(error.localizedDescription)"
+                return "Import failed: \(error.localizedDescription)"
             case .modelLoadingFailed(let error):
-                return "Caricamento modello fallito: \(error.localizedDescription)"
+                return "Model loading failed: \(error.localizedDescription)"
             case .sceneConversionFailed(let error):
-                return "Conversione della scena fallita: \(error.localizedDescription)"
+                return "Scene conversion failed: \(error.localizedDescription)"
             case .unsupportedFileFormat:
-                return "Formato file non supportato"
+                return "Unsupported file format"
             }
         }
     }
