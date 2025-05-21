@@ -14,7 +14,8 @@ struct ImmersiveView: View {
                 let anchorEntity = AnchorEntity(.plane(.horizontal, classification: .floor, minimumBounds: [0.5, 0.5]))
                 
                 // Posiziona l'ancora di fronte all'utente
-                anchorEntity.position = [0, 0, -1.5]
+                // La spostiamo un po' verso l'alto e in avanti per una migliore visualizzazione
+                anchorEntity.position = [0, 1.0, -1.5]
                 
                 // Clona il modello per l'uso nello spazio immersivo
                 let modelClone = model.clone(recursive: true)
@@ -43,6 +44,7 @@ struct ImmersiveView: View {
                 .onChanged { value in
                     let rotationAmount = Float(value.translation.width - dragAmount.width) / 200.0
                     if let model = appModel.currentModel {
+                        // Utilizziamo l'asse Y per la rotazione orizzontale
                         let rotationY = simd_quatf(angle: rotationAmount, axis: [0, 1, 0])
                         model.transform.rotation = model.transform.rotation * rotationY
                         dragAmount = value.translation
