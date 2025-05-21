@@ -1,23 +1,18 @@
-//
-//  OA_ProjectApp.swift
-//  OA Project
-//
-//  Created by Alessandro Magnani on 21/03/25.
-//
-
 import SwiftUI
 
 @main
 struct OA_ProjectApp: App {
-
+    // Istanza del modello dell'applicazione
     @State private var appModel = AppModel()
 
     var body: some Scene {
+        // Finestra principale dell'applicazione
         WindowGroup {
             ContentView()
                 .environment(appModel)
         }
 
+        // Configurazione dello spazio immersivo
         ImmersiveSpace(id: appModel.immersiveSpaceID) {
             ImmersiveView()
                 .environment(appModel)
