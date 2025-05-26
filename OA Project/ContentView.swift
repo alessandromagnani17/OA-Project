@@ -64,6 +64,7 @@ struct ContentView: View {
                     .padding()
                 }
                 
+                // Sezione dei controlli per lo spazio immersivo
                 if appModel.immersiveSpaceState == .closed {
                     Button(action: {
                         // Prima di aprire lo spazio immersivo, carica il modello corrente
@@ -93,20 +94,57 @@ struct ContentView: View {
                     .padding()
                     .disabled(selectedModelURL == nil)
                 } else {
-                    Button(action: {
-                        // Chiudiamo lo spazio immersivo
-                        Task {
-                            await dismissImmersiveSpace()
-                            await MainActor.run {
-                                appModel.immersiveSpaceState = .closed
+                    VStack(spacing: 10) {
+                        // Informazioni sui marker
+                        HStack {
+                            Text("Markers: \(appModel.markerCount)/3")
+                                .font(.headline)
+                            
+                            if appModel.isCuttingPlaneActive {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text("Cutting Plane Active")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
                             }
-                            print("Spazio immersivo chiuso con successo")
                         }
-                    }) {
-                        Label("Close Immersive Space", systemImage: "xmark.circle")
-                            .font(.headline)
+                        .padding()
+                        .background(.regularMaterial)
+                        .cornerRadius(8)
+                        
+                        // Istruzioni per l'utente
+                        Text("Use pinch gesture to place markers")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                        
+                        HStack(spacing: 20) {
+                            // Pulsante per pulire i marker
+                            Button(action: {
+                                appModel.clearAllMarkers()
+                            }) {
+                                Label("Clear Markers", systemImage: "trash")
+                                    .font(.subheadline)
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(appModel.markerCount == 0)
+                            
+                            // Pulsante per chiudere lo spazio immersivo
+                            Button(action: {
+                                Task {
+                                    await dismissImmersiveSpace()
+                                    await MainActor.run {
+                                        appModel.immersiveSpaceState = .closed
+                                    }
+                                    print("Spazio immersivo chiuso con successo")
+                                }
+                            }) {
+                                Label("Close", systemImage: "xmark.circle")
+                                    .font(.subheadline)
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
                     .padding()
                 }
             }
@@ -224,8 +262,6 @@ struct ContentView: View {
                     rootModelEntity.orientation = rotation
                     
                     // Spostiamo il modello verso l'alto per centrarlo
-                    // Poiché abbiamo ruotato di 90 gradi sull'asse X, dobbiamo spostare sulla Z
-                    // per compensare la posizione verticale
                     rootModelEntity.position = [0, 1.0, 0]
                     
                     await MainActor.run {
@@ -302,7 +338,6 @@ struct ContentView: View {
                 modelEntity = ModelEntity(mesh: sphereMesh, materials: [material])
             } else {
                 // Per altre geometrie, usiamo un box come segnaposto
-                // Approssimiamo la dimensione del box usando il bounding box del nodo
                 let boundingBox = node.boundingBox
                 let minBound = boundingBox.min
                 let maxBound = boundingBox.max
@@ -311,7 +346,6 @@ struct ContentView: View {
                     Float(maxBound.y - minBound.y),
                     Float(maxBound.z - minBound.z)
                 )
-                // Correggi l'errore length() calcolando la lunghezza manualmente
                 let length = sqrt(size.x * size.x + size.y * size.y + size.z * size.z)
                 let boxMesh = MeshResource.generateBox(size: length > 0 ? size : [0.1, 0.1, 0.1])
                 
@@ -334,7 +368,6 @@ struct ContentView: View {
             )
             
             // Applichiamo la scala
-            // Estrai la scala dalla matrice di trasformazione mondiale
             let worldTransform = node.worldTransform
             let scaleX = Float(sqrt(worldTransform.m11 * worldTransform.m11 + worldTransform.m12 * worldTransform.m12 + worldTransform.m13 * worldTransform.m13))
             let scaleY = Float(sqrt(worldTransform.m21 * worldTransform.m21 + worldTransform.m22 * worldTransform.m22 + worldTransform.m23 * worldTransform.m23))
