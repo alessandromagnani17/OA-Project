@@ -2,6 +2,7 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Configurazione esistente per Scene Manifest -->
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationPreferredDefaultSceneSessionRole</key>
@@ -19,6 +20,8 @@
 			</array>
 		</dict>
 	</dict>
+	
+	<!-- Configurazione esistente per USDZ -->
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -41,6 +44,18 @@
 				</array>
 			</dict>
 		</dict>
+	</array>
+	
+	<!-- NUOVE CHIAVI PER HAND TRACKING -->
+	<key>NSHandTrackingUsageDescription</key>
+	<string>This app uses hand tracking to allow you to place markers with pinch gestures for creating cutting planes in 3D models.</string>
+	
+	<key>NSHandsTrackingUsageDescription</key>
+	<string>This app uses hand tracking to allow you to place markers with pinch gestures for creating cutting planes in 3D models.</string>
+	
+	<key>UIRequiredDeviceCapabilities</key>
+	<array>
+		<string>arkit</string>
 	</array>
 </dict>
 </plist>
