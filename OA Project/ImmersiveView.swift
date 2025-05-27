@@ -140,14 +140,38 @@ struct ImmersiveView: View {
             let markerWorldPos = worldTransform * SIMD4<Float>(markerLocalPos.x, markerLocalPos.y, markerLocalPos.z, 1)
             let finalPos = SIMD3<Float>(markerWorldPos.x, markerWorldPos.y, markerWorldPos.z)
             
-            print("Pinch rilasciato! Posiziono marker a: \(finalPos)")
-            
-            await MainActor.run {
-                addMarker(at: finalPos)
+            // CONTROLLO: Non creare marker se il pinch è troppo vicino all'UI
+            if shouldCreateMarker(at: finalPos) {
+                print("Pinch rilasciato! Posiziono marker a: \(finalPos)")
+                
+                await MainActor.run {
+                    addMarker(at: finalPos)
+                }
+            } else {
+                print("Pinch rilevato vicino all'UI - marker non creato")
             }
         }
         
         lastPinchState = isPinching
+    }
+    
+    // Verifica se il marker dovrebbe essere creato in base alla posizione
+    private func shouldCreateMarker(at position: SIMD3<Float>) -> Bool {
+        // Zona dell'UI approssimativa (parte inferiore e centrale dello spazio)
+        // L'UI di solito appare nella parte bassa e centrale della vista
+        
+        // Se il pinch è troppo in basso (vicino all'UI), non creare marker
+        if position.y < 0.5 {
+            return false
+        }
+        
+        // Se il pinch è troppo al centro e in basso (zona UI), non creare marker
+        if abs(position.x) < 0.5 && position.y < 1.0 && position.z > -0.5 {
+            return false
+        }
+        
+        // Altrimenti, crea il marker
+        return true
     }
     
     // Aggiunge un marker nella posizione specificata
