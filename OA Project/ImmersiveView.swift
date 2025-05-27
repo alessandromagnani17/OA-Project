@@ -182,9 +182,8 @@ struct ImmersiveView: View {
         // Crea una sfera più piccola per il marker
         let sphereMesh = MeshResource.generateSphere(radius: 0.01) // Ridotto da 0.02 a 0.01
         
-        // Colori per i marker
-        let colors: [UIColor] = [.red, .green, .blue]
-        let color = colors[index % colors.count]
+        // Tutti i marker sono blu
+        let color = UIColor(red: 0.2, green: 0.6, blue: 1.0, alpha: 1.0)
         
         var material = SimpleMaterial()
         material.color = .init(tint: color)
@@ -201,22 +200,39 @@ struct ImmersiveView: View {
     
     // Crea il piano di taglio
     private func createCuttingPlane() {
-        guard appModel.markerManager.markers.count == 3 else { return }
+        guard appModel.markerManager.markers.count == 3 else {
+            print("ERRORE: createCuttingPlane chiamato senza 3 marker")
+            return
+        }
         
         let pos1 = appModel.markerManager.markers[0].position
         let pos2 = appModel.markerManager.markers[1].position
         let pos3 = appModel.markerManager.markers[2].position
         
+        print("Posizioni marker per piano: P1=\(pos1), P2=\(pos2), P3=\(pos3)")
+        
         // Calcola normale del piano
         let v1 = pos2 - pos1
         let v2 = pos3 - pos1
-        let normal = normalize(cross(v1, v2))
+        
+        // Verifica che i vettori non siano paralleli
+        let crossProduct = cross(v1, v2)
+        let crossLength = simd_length(crossProduct)
+        
+        if crossLength < 0.001 {
+            print("AVVERTIMENTO: I marker sono quasi collineari, piano potrebbe non essere visibile")
+        }
+        
+        let normal = normalize(crossProduct)
         
         // Centro del piano
         let center = (pos1 + pos2 + pos3) / 3
         
-        // Rimuovi piano precedente
-        appModel.markerManager.cuttingPlane?.removeFromParent()
+        // Rimuovi piano precedente se esiste
+        if let oldPlane = appModel.markerManager.cuttingPlane {
+            oldPlane.removeFromParent()
+            print("Piano precedente rimosso")
+        }
         
         // Crea nuovo piano
         let planeEntity = Entity()
@@ -237,14 +253,19 @@ struct ImmersiveView: View {
         planeEntity.orientation = rotation
         planeEntity.name = "CuttingPlane"
         
+        // Salva il riferimento
         appModel.markerManager.cuttingPlane = planeEntity
         
-        // Aggiungi direttamente alla scena
+        // Aggiungi FORZATAMENTE alla scena
         if let content = realityContent {
             content.add(planeEntity)
+            print("Piano di taglio AGGIUNTO FORZATAMENTE alla scena")
+        } else {
+            print("ERRORE: realityContent è nil, impossibile aggiungere il piano")
         }
         
         print("Piano di taglio creato al centro: \(center) con normale: \(normal)")
+        print("Lunghezza prodotto vettoriale: \(crossLength)")
     }
     
     // Aggiorna i marker nella scena
