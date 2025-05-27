@@ -179,8 +179,8 @@ struct ImmersiveView: View {
     private func createMarkerEntity(at position: SIMD3<Float>, index: Int) -> Entity {
         let markerEntity = Entity()
         
-        // Crea una sfera per il marker
-        let sphereMesh = MeshResource.generateSphere(radius: 0.02)
+        // Crea una sfera più piccola per il marker
+        let sphereMesh = MeshResource.generateSphere(radius: 0.01) // Ridotto da 0.02 a 0.01
         
         // Colori per i marker
         let colors: [UIColor] = [.red, .green, .blue]
@@ -223,7 +223,8 @@ struct ImmersiveView: View {
         let planeMesh = MeshResource.generatePlane(width: 1.0, depth: 1.0)
         
         var planeMaterial = SimpleMaterial()
-        planeMaterial.color = .init(tint: UIColor.red.withAlphaComponent(0.3))
+        // Colore blu come specificato: NSColor(calibratedRed: 0.2, green: 0.6, blue: 1.0, alpha: 0.3)
+        planeMaterial.color = .init(tint: UIColor(red: 0.2, green: 0.6, blue: 1.0, alpha: 0.3))
         planeMaterial.roughness = 0.8
         
         let planeModel = ModelEntity(mesh: planeMesh, materials: [planeMaterial])
