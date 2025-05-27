@@ -9,6 +9,11 @@ struct ImmersiveView: View {
     @State private var handTracking = HandTrackingProvider()
     @State private var lastPinchState = false
     @State private var realityContent: RealityViewContent? = nil
+    @State private var pinchStartTime: Date? = nil
+    
+    // NUOVO: Stato per tracciare se l'utente sta guardando un elemento UI
+    @State private var isLookingAtUI = false
+    @State private var lastUIInteractionTime: Date = Date.distantPast
     
     var body: some View {
         RealityView { content in
@@ -47,6 +52,15 @@ struct ImmersiveView: View {
             // RIMOSSO: l'update automatico causava problemi
             // updateMarkersInScene(content: content)
         }
+        // NUOVO: Monitora le interazioni UI con un approccio semplificato
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            // App torna in primo piano - potrebbe essere interazione UI
+            lastUIInteractionTime = Date()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            // App va in background
+            isLookingAtUI = false
+        }
         .task {
             // Avvia il hand tracking
             do {
@@ -67,13 +81,18 @@ struct ImmersiveView: View {
         }
         .onTapGesture { location in
             // TEMPORANEO: per testare senza hand tracking
-            let testPosition = SIMD3<Float>(
-                Float.random(in: -1...1),
-                Float.random(in: 0.5...2),
-                Float.random(in: -2...0)
-            )
-            addMarker(at: testPosition)
-            print("Marker di test aggiunto con tap")
+            // NUOVO: Non creare marker se stiamo guardando l'UI
+            if !isLookingAtUI {
+                let testPosition = SIMD3<Float>(
+                    Float.random(in: -1...1),
+                    Float.random(in: 0.5...2),
+                    Float.random(in: -2...0)
+                )
+                addMarker(at: testPosition)
+                print("Marker di test aggiunto con tap")
+            } else {
+                print("Tap ignorato - focus su UI")
+            }
         }
         .gesture(
             DragGesture()
@@ -103,7 +122,7 @@ struct ImmersiveView: View {
         }
     }
     
-    // Controlla il gesto di pinch
+    // MODIFICATO: Controlla il gesto di pinch con rilevamento UI
     private func checkPinchGesture(handAnchor: HandAnchor) async {
         guard let handSkeleton = handAnchor.handSkeleton else { return }
         
@@ -127,52 +146,76 @@ struct ImmersiveView: View {
         let pinchThreshold: Float = 0.03
         let isPinching = distance < pinchThreshold
         
+        // Traccia quando inizia il pinch
+        if !lastPinchState && isPinching {
+            pinchStartTime = Date()
+        }
+        
         // Rileva quando il pinch viene rilasciato (era attivo, ora non lo è)
         if lastPinchState && !isPinching {
-            // Calcola posizione del marker (punto medio tra pollice e indice)
-            let markerLocalPos = (
-                SIMD3<Float>(thumbPos.x, thumbPos.y, thumbPos.z) +
-                SIMD3<Float>(indexPos.x, indexPos.y, indexPos.z)
-            ) / 2
-            
-            // Trasforma in coordinate mondo
-            let worldTransform = handAnchor.originFromAnchorTransform
-            let markerWorldPos = worldTransform * SIMD4<Float>(markerLocalPos.x, markerLocalPos.y, markerLocalPos.z, 1)
-            let finalPos = SIMD3<Float>(markerWorldPos.x, markerWorldPos.y, markerWorldPos.z)
-            
-            // CONTROLLO: Non creare marker se il pinch è troppo vicino all'UI
-            if shouldCreateMarker(at: finalPos) {
+            // NUOVO: Controlla se dovremmo creare il marker
+            if shouldCreateMarker() {
+                // Calcola posizione del marker (punto medio tra pollice e indice)
+                let markerLocalPos = (
+                    SIMD3<Float>(thumbPos.x, thumbPos.y, thumbPos.z) +
+                    SIMD3<Float>(indexPos.x, indexPos.y, indexPos.z)
+                ) / 2
+                
+                // Trasforma in coordinate mondo
+                let worldTransform = handAnchor.originFromAnchorTransform
+                let markerWorldPos = worldTransform * SIMD4<Float>(markerLocalPos.x, markerLocalPos.y, markerLocalPos.z, 1)
+                let finalPos = SIMD3<Float>(markerWorldPos.x, markerWorldPos.y, markerWorldPos.z)
+                
                 print("Pinch rilasciato! Posiziono marker a: \(finalPos)")
                 
                 await MainActor.run {
                     addMarker(at: finalPos)
                 }
             } else {
-                print("Pinch rilevato vicino all'UI - marker non creato")
+                print("Pinch ignorato - interazione con UI o pinch troppo breve")
             }
+            
+            // Reset del timer
+            pinchStartTime = nil
         }
         
         lastPinchState = isPinching
     }
     
-    // Verifica se il marker dovrebbe essere creato in base alla posizione
-    private func shouldCreateMarker(at position: SIMD3<Float>) -> Bool {
-        // Zona dell'UI approssimativa (parte inferiore e centrale dello spazio)
-        // L'UI di solito appare nella parte bassa e centrale della vista
-        
-        // Se il pinch è troppo in basso (vicino all'UI), non creare marker
-        if position.y < 0.5 {
+    // NUOVO: Logica completa per decidere se creare il marker
+    private func shouldCreateMarker() -> Bool {
+        // 1. Controlla se c'è stata una recente interazione UI (ultimi 2 secondi)
+        let timeSinceUIInteraction = Date().timeIntervalSince(lastUIInteractionTime)
+        if timeSinceUIInteraction < 2.0 {
+            print("❌ Non creo marker - recente interazione UI (\(timeSinceUIInteraction)s fa)")
             return false
         }
         
-        // Se il pinch è troppo al centro e in basso (zona UI), non creare marker
-        if abs(position.x) < 0.5 && position.y < 1.0 && position.z > -0.5 {
+        // 2. Controlla il timing del pinch
+        guard let startTime = pinchStartTime else {
+            print("❌ Non creo marker - timing non valido")
             return false
         }
         
-        // Altrimenti, crea il marker
+        let pinchDuration = Date().timeIntervalSince(startTime)
+        
+        // Se il pinch è durato meno di 0.3 secondi, probabilmente è un'interazione UI
+        if pinchDuration < 0.3 {
+            print("❌ Non creo marker - pinch troppo breve (\(pinchDuration)s)")
+            return false
+        }
+        
+        // 3. Controlla se il pinch è durato troppo a lungo (oltre 3 secondi = probabilmente non intenzionale)
+        if pinchDuration > 3.0 {
+            print("❌ Non creo marker - pinch troppo lungo (\(pinchDuration)s)")
+            return false
+        }
+        
+        print("✅ Creo marker - pinch valido (\(pinchDuration)s)")
         return true
     }
+    
+    // RIMOSSO: shouldCreateMarkerWithTiming() sostituito da shouldCreateMarker()
     
     // Aggiunge un marker nella posizione specificata
     private func addMarker(at position: SIMD3<Float>) {
@@ -365,5 +408,25 @@ struct ImmersiveView: View {
         )
         fillLight.position = [-1, 1, 0]
         content.add(fillLight)
+    }
+}
+
+// VERSIONE SEMPLIFICATA: Sistema di rilevamento UI per visionOS
+extension ImmersiveView {
+    // Funzione per simulare il rilevamento di interazioni UI
+    private func markUIInteraction() {
+        lastUIInteractionTime = Date()
+        isLookingAtUI = true
+        
+        // Dopo 1 secondo, considera finita l'interazione UI
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.isLookingAtUI = false
+        }
+    }
+    
+    // Aggiungi questa funzione ai tuoi pulsanti e controlli UI
+    private func onUIElementTapped() {
+        markUIInteraction()
+        // ... resto del codice del pulsante
     }
 }
