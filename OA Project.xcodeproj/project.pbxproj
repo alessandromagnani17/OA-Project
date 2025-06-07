@@ -37,6 +37,26 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		F83005732DF4DE2100368D67 /* Core */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Core;
+			sourceTree = "<group>";
+		};
+		F83005742DF4DE2700368D67 /* UI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UI;
+			sourceTree = "<group>";
+		};
+		F83005752DF4DE2C00368D67 /* Service */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Service;
+			sourceTree = "<group>";
+		};
+		F83005772DF4DE4600368D67 /* Utility */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Utility;
+			sourceTree = "<group>";
+		};
 		F871E19D2D8D87B800BBB76C /* OA Project */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -74,6 +94,10 @@
 		F871E1922D8D87B800BBB76C = {
 			isa = PBXGroup;
 			children = (
+				F83005772DF4DE4600368D67 /* Utility */,
+				F83005752DF4DE2C00368D67 /* Service */,
+				F83005742DF4DE2700368D67 /* UI */,
+				F83005732DF4DE2100368D67 /* Core */,
 				F871E19D2D8D87B800BBB76C /* OA Project */,
 				F871E19E2D8D87B800BBB76C /* Packages */,
 				F871E1B92D8D87BA00BBB76C /* OA ProjectTests */,
@@ -114,6 +138,10 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				F83005732DF4DE2100368D67 /* Core */,
+				F83005742DF4DE2700368D67 /* UI */,
+				F83005752DF4DE2C00368D67 /* Service */,
+				F83005772DF4DE4600368D67 /* Utility */,
 				F871E19D2D8D87B800BBB76C /* OA Project */,
 			);
 			name = "OA Project";
